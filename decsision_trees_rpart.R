@@ -7,6 +7,7 @@ test <- read.csv("test.csv") #use only 100 rows for speed during feature enginee
 
 #import necessary packages
 library(ggplot2)
+library(rpart)
 
 #####Feature Engineering function: accepts data frame, returns data frame
 featureEngineer <- function(df) {
@@ -52,19 +53,34 @@ featureEngineer <- function(df) {
 train <- featureEngineer(train)
 test <- featureEngineer(test)
 
+#set rpart parameters
+myMinsplit <- 2
+myCp <- 0.00001
 
-#TEST: Registered vs. casual by weekhour
-hourAggMean <- aggregate((train$casual), by=list(hour = train$weekHour), FUN = median)
-hourAggMedian <- aggregate((train$registered), by=list(hour = train$weekHour), FUN = median)
-hourAggJoin <- merge(hourAggMean, hourAggMedian, by="hour")
-testPlot <- ggplot(hourAggJoin, aes(x = hour)) + geom_line(aes(y = x.x), color = "red") + geom_line(aes(y = x.y), color = "blue")
-testPlot
+#make separate fits for casual and registered
+casualFit <- rpart(casual ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
+registeredFit <- rpart(registered ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
+#apply to test data
+casualPrediction <- predict(casualFit, test, type="matrix")
+plot(casualPrediction)
+test$casual <- round(casualPrediction, 0)
+registeredPrediction <- predict(registeredFit,test,type="matrix")
+test$registered <- round(registeredPrediction,0)
+plot(registeredPrediction)
+#count = casual + registered
+test$count <- test$casual + test$registered
 
-#make separate predictions for casual and registered?
+
+#make one fit for count
+#countFit <- rpart(count ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
+#countPrediction <- predict(countFit, test, type="matrix")
+#test$count <- round(countPrediction, 0)
 
 
-
+#testplot
+plot(test$count)
+plot(train$count)
 
 #create output file from dataset test with predictions
 submit <- data.frame (datetime = test$datetime, count = test$count)
-write.csv(submit, file = "BaseScript_Prediction", row.names=FALSE, col.names=TRUE)
+write.csv(submit, file = "rpart_Prediction.csv", row.names=FALSE)
