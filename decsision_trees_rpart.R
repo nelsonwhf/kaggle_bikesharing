@@ -6,8 +6,8 @@ train <- read.csv("train.csv") #use only 1000 rows for speed during feature engi
 test <- read.csv("test.csv") #use only 100 rows for speed during feature engineering
 
 #import necessary packages
-library(ggplot2)
 library(rpart)
+library(rpart.plot)
 
 #####Feature Engineering function: accepts data frame, returns data frame
 featureEngineer <- function(df) {
@@ -26,14 +26,11 @@ featureEngineer <- function(df) {
   #Day of the week
   df$weekday <- as.factor(weekdays(df$datetime))
   df$weekday <- factor(df$weekday, levels = c("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")) #order factors
-  #Is Weekend?
-  df$isWeekend <- ifelse((df$weekday == "Samstag" | df$weekday == "Sonntag"),1, 0)
-  df$isWeekend <- as.factor(df$isWeekend)
-  #convert weekdays into numeric factors
-  df$weekdayNumeric <- as.integer(df$weekday)
-  
-  #Create a value for each hour of the week
-  df$weekHour <- (df$weekdayNumeric-1) * 24 + as.integer(df$hour)
+    
+  #something that incorporates yearly growth:
+  #extract year from date and convert to factor
+  df$year <- as.integer(substr(df$datetime, 1,4))
+  df$year <- as.factor(df$year)
   
   #rearrange table for better readability
   #df[,c(1,3,2,4)]
@@ -41,10 +38,10 @@ featureEngineer <- function(df) {
   #return full featured data frame
   return(df)
   
+  
 #####FEATURE ENGINEERING IDEAS:
 #Day before / day after holiday
 #Icy roads (could be inferred from temperature? Could be a day after a night with freezing temepratures?)
-  
 }
 
 
@@ -56,30 +53,39 @@ test <- featureEngineer(test)
 #set rpart parameters
 myMinsplit <- 2
 myCp <- 0.00001
+#Also would be good to play around with parameter weight
 
+
+####### THIS WHOLE BLOCK SHOULD BE PUT IN A SEPARATE FUNCTION(S) WHICH ELIMINATE REDUNDANT CODE ######### 
 #make separate fits for casual and registered
-casualFit <- rpart(casual ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
-registeredFit <- rpart(registered ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
-#apply to test data
+casualFit <- rpart(casual ~ holiday + workingday + hour + weekday + year + season + weather + atemp, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
+registeredFit <- rpart(registered ~ holiday + workingday + hour + weekday + year + season + weather + atemp, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
+#apply to casuals
 casualPrediction <- predict(casualFit, test, type="matrix")
-plot(casualPrediction)
 test$casual <- round(casualPrediction, 0)
+#plot vs train data
+plot(train$casual)
+plot(test$casual)
+#apply to registered
 registeredPrediction <- predict(registeredFit,test,type="matrix")
 test$registered <- round(registeredPrediction,0)
-plot(registeredPrediction)
-#count = casual + registered
+#plot vs. train data
+plot(train$registered)
+plot(test$registered)
+#aggregate registered and casual to count
+count = casual + registered
 test$count <- test$casual + test$registered
-
 
 #make one fit for count
 #countFit <- rpart(count ~ holiday + workingday + season + weather + atemp + hour + weekday, data=train, method="anova", control=rpart.control(minsplit=myMinsplit, cp=myCp))
 #countPrediction <- predict(countFit, test, type="matrix")
 #test$count <- round(countPrediction, 0)
-
+#######################################################################################################
 
 #testplot
-plot(test$count)
 plot(train$count)
+plot(test$count)
+prp(casualFit)
 
 #create output file from dataset test with predictions
 submit <- data.frame (datetime = test$datetime, count = test$count)

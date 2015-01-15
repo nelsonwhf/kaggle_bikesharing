@@ -2,11 +2,11 @@
 setwd("/Users/janbrusch/Documents/R/kaggle_Bikesharing")
 
 #import datasets from working directory
-train <- read.csv("train.csv", nrows=1000) #use only 1000 rows for speed during feature engineering
-test <- read.csv("test.csv", nrows=100) #use only 100 rows for speed during feature engineering
+train <- read.csv("train.csv") #use only 1000 rows for speed during feature engineering
+test <- read.csv("test.csv") #use only 100 rows for speed during feature engineering
 
 #import necessary packages
-library(ggplot2)
+library(party)
 
 #####Feature Engineering function: accepts data frame, returns data frame
 featureEngineer <- function(df) {
@@ -25,17 +25,9 @@ featureEngineer <- function(df) {
   #Day of the week
   df$weekday <- as.factor(weekdays(df$datetime))
   df$weekday <- factor(df$weekday, levels = c("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")) #order factors
-  #Is Weekend?
-  df$isWeekend <- ifelse((df$weekday == "Samstag" | df$weekday == "Sonntag"),1, 0)
-  df$isWeekend <- as.factor(df$isWeekend)
-  #convert weekdays into numeric factors
-  df$weekdayNumeric <- as.integer(df$weekday)
-  
-  #Create a value for each hour of the week
-  df$weekHour <- (df$weekdayNumeric-1) * 24 + as.integer(df$hour)
-  
-  #something that incorporates yearly growth
-  #extract year from date
+    
+  #something that incorporates yearly growth:
+  #extract year from date and convert to factor
   df$year <- as.integer(substr(df$datetime, 1,4))
   df$year <- as.factor(df$year)
   
@@ -44,13 +36,7 @@ featureEngineer <- function(df) {
   
   #return full featured data frame
   return(df)
-  
-  
-  #####FEATURE ENGINEERING IDEAS:
-  #Day before / day after holiday
-  #Icy roads (could be inferred from temperature? Could be a day after a night with freezing temepratures?)
-  
-  
+
 }
 
 
@@ -59,19 +45,32 @@ featureEngineer <- function(df) {
 train <- featureEngineer(train)
 test <- featureEngineer(test)
 
+#####RANDOM FOREST STARTS HERE#########
+###separate fits and separate variables for casual and registered
+set.seed(162)
+myNtree <- 1000
+myMtry <- 3
+formula <- count ~ season + holiday + workingday + weather + temp + humidity + windspeed + hour + weekday + year
+#casual
+#casualFit <- randomForest(casual ~ hour + year + humidity + temp + atemp + workingday + weekday, data=train, ntree=myNtree, mtry=myMtry, importance=myImportance)
+#test$casual <- predict(casualFit, test)
+#registered
+#registeredFit <- randomForest(registered ~ hour + year + season + weather + workingday + humidity + weekday + atemp, data=train, ntree=myNtree, mtry=myMtry, importance=myImportance)
+#test$registered <- predict(registeredFit, test)
+#aggregate columns into count
+#test$count <- round(test$casual + test$registered, 0)
 
-#TEST: Registered vs. casual by weekhour
-hourAggMean <- aggregate((train$casual), by=list(hour = train$weekHour), FUN = median)
-hourAggMedian <- aggregate((train$registered), by=list(hour = train$weekHour), FUN = median)
-hourAggJoin <- merge(hourAggMean, hourAggMedian, by="hour")
-testPlot <- ggplot(hourAggJoin, aes(x = hour)) + geom_line(aes(y = x.x), color = "red") + geom_line(aes(y = x.y), color = "blue")
-testPlot
+#####one fit for the whole count
+countFit <- cforest(formula, data=train, controls=cforest_unbiased(ntree=myNtree, mtry=myMtry))
+prediction <- predict(countFit, test, OOB=TRUE)
+test$count <- round(prediction, 0)
 
-#make separate predictions for casual and registered?
-
+#testplot
+plot(train$count)
+plot(test$count)
 
 
 
 #create output file from dataset test with predictions
 submit <- data.frame (datetime = test$datetime, count = test$count)
-write.csv(submit, file = "BaseScript_Prediction", row.names=FALSE, col.names=TRUE)
+write.csv(submit, file = "randomForest_Prediction.csv", row.names=FALSE)
